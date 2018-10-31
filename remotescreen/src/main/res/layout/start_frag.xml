@@ -2,6 +2,17 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
+
+   <Spinner
+       android:layout_width="wrap_content"
+       android:layout_height="wrap_content"
+       android:layout_alignParentTop="true"
+
+       >
+
+   </Spinner>
+
+
    <Button
        android:id="@+id/start_remote"
        android:layout_width="wrap_content"
@@ -9,4 +20,6 @@
        android:text="开始推送屏幕"
        android:layout_centerInParent="true"
        />
+
+
 </RelativeLayout>

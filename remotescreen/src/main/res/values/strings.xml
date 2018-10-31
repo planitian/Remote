@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">RemoteScreen</string>
+
+    <integer-array name="video">
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+    </integer-array>
 </resources>

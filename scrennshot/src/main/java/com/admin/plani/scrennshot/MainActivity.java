@@ -5,9 +5,11 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
+import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
@@ -17,6 +19,7 @@ import android.media.MediaRecorder;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Environment;
+import android.os.SystemClock;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
@@ -79,6 +82,8 @@ public class MainActivity extends AppCompatActivity {
 
     private WebSocket webSocket;
 
+
+    private ImageView imageView;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -86,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
         if (!isPermission()) {
             obtainPermission();
         }
+        imageView = findViewById(R.id.imageView);
         shot = findViewById(R.id.screen_shot);
         button = findViewById(R.id.image_shot);
         button.setOnClickListener(new View.OnClickListener() {
@@ -139,16 +145,16 @@ public class MainActivity extends AppCompatActivity {
                             dpi, projection, file.getAbsolutePath());
                     mediaRecordThread.start();*/
 
-                    ScreenRecorder screenRecorder = new ScreenRecorder(projection);
+                    /*ScreenRecorder screenRecorder = new ScreenRecorder(projection);
                     new Thread(screenRecorder).start();
                     this.runOnUiThread(() -> Toast.makeText(MainActivity.this, "开始录屏", Toast.LENGTH_LONG).show());
-                    break;
+                    break;*/
 
 
                     //>>>>>>>>>>>>>>>>>>>
-                 /*   imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1);
-                    projection.createVirtualDisplay("shot", width, height, dpi,  DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surfaceView.getHolder().getSurface(), null, null);*/
-/*                    SystemClock.sleep(1000);
+                    imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1);
+                    projection.createVirtualDisplay("shot", width, height, dpi,  DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader.getSurface(), null, null);
+                    SystemClock.sleep(1000);
                     Image image = imageReader.acquireNextImage();
                     int width = image.getWidth();
                     int height = image.getHeight();
@@ -166,8 +172,9 @@ public class MainActivity extends AppCompatActivity {
                             imageView.setImageBitmap(bitmap);
                             imageView.setBackgroundColor(getColor(android.R.color.black));
                         }
-                    });*/
+                    });
                 }
+                break;
         }
 
     }
@@ -265,22 +272,18 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void run() {
-            try {
                 try {
                     prepereEncoder();
                     String path = Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + "first.mp4";
                     File out = new File(path);
                     mediaMuxer = new MediaMuxer(out.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+                    virtualDisplay = mediaProjection.createVirtualDisplay("luping", width,height,
+                            dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, mSurface, null, null);
+                    Zprint.log(this.getClass(), "created virtual display:");
+                    recordVirtualDisplay();
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-                virtualDisplay = mediaProjection.createVirtualDisplay("luping", width,height,
-                        dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, mSurface, null, null);
-                Zprint.log(this.getClass(), "created virtual display:");
-                recordVirtualDisplay();
-            } finally {
-
-            }
         }
 
         private void prepereEncoder() throws IOException {
