@@ -1,6 +1,7 @@
 package com.admin.plani.remotescreen.service;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -12,6 +13,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
+import android.media.Image;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -30,7 +32,12 @@ import android.view.Surface;
 import com.admin.plani.remotescreen.start.MainActivity;
 import com.admin.plani.remotescreen.utils.Zprint;
 
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutorService;
@@ -56,6 +63,7 @@ public class MyService extends Service {
     Notification notification;
     private NotificationManager notificationManager;
     private final int NOTIID = 1;
+    private final String CHANNELID = "service";
 
     public MyService() {
 
@@ -76,8 +84,14 @@ public class MyService extends Service {
         IntentFilter intentFilter = new IntentFilter("pause_recodr");
         localBroadcastManager.registerReceiver(receiver, intentFilter);
 
+
         notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        notificationManager.cancel(1);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            NotificationChannel mChannel = new NotificationChannel(CHANNELID, "后台服务", NotificationManager.IMPORTANCE_HIGH);
+            notificationManager.createNotificationChannel(mChannel);
+        }
+
+
         //前台通知
         notification = initNotification("等待中");
         startForeground(NOTIID, notification);
@@ -178,11 +192,34 @@ public class MyService extends Service {
             if (local && mediaMuxer == null) {
                 throw new NullPointerException("如果想录制mp4到本机，必须先调用 initMediaMuxer（）");
             }
+            File file = new File("/storage/emulated/0/Download/", "ss.apk");
+            if (!file.exists()) {
+                try {
+                    file.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            BufferedOutputStream bufferedOutputStream = null;
+            try {
+                FileOutputStream fileOutputStream = new FileOutputStream(file);
+                bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
             while (atomicBoolean.get()) {
                 int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, 10000);
                 if (outputBufferId >= 0) {
+                    Zprint.log(this.getClass(), "可以录制 ");
                     ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(outputBufferId);
                     // 这里 直播的话 传送 缓存数组
+                    byte[] temp = new byte[outputBuffer.limit()];
+                    outputBuffer.get(temp);
+                    try {
+                        bufferedOutputStream.write(temp);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
 
                     //录制mp4
                     encodeToVideoTrack(outputBuffer);
@@ -190,7 +227,12 @@ public class MyService extends Service {
                     mediaCodec.releaseOutputBuffer(outputBufferId, false);
                 } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     //输出格式变化
+
                     MediaFormat newOutFormat = mediaCodec.getOutputFormat();
+
+                    ByteBuffer sps = newOutFormat.getByteBuffer("csd-0");    // SPS
+                    ByteBuffer pps = newOutFormat.getByteBuffer("csd-1");    // PPS
+                    Zprint.log(this.getClass(), " 输出格式 有变化 ");
                     if (mediaMuxer != null) {
                         //跟踪新的 格式的 信道
                         mVideoTrackIndex = mediaMuxer.addTrack(newOutFormat);
@@ -198,13 +240,22 @@ public class MyService extends Service {
                     }
 
                 } else if (outputBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    try {
+                    Zprint.log(this.getClass(), " INFO_TRY_AGAIN_LATER  ");
+                /*    try {
                         Thread.sleep(10);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
-                    }
+                    }*/
                 }
             }
+            try {
+                bufferedOutputStream.flush();
+                bufferedOutputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+
+            }
+
             //告诉编码器 结束流
             mediaCodec.signalEndOfInputStream();
             mediaCodec.stop();
@@ -263,7 +314,7 @@ public class MyService extends Service {
 
         Intent intent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 1, intent, FLAG_UPDATE_CURRENT);
-        Notification notification = new NotificationCompat.Builder(getApplicationContext(), "1")
+        Notification notification = new NotificationCompat.Builder(getApplicationContext(), CHANNELID)
                 .setSmallIcon(getApplicationContext().getApplicationInfo().icon)
                 .setWhen(System.currentTimeMillis()).setAutoCancel(true)
                 .setContentText(content)
@@ -273,4 +324,5 @@ public class MyService extends Service {
                 .build();
         return notification;
     }
+
 }

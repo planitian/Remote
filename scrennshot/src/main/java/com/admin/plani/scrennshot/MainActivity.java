@@ -1,10 +1,13 @@
 package com.admin.plani.scrennshot;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.hardware.display.DisplayManager;
@@ -29,6 +32,7 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
+import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
@@ -47,10 +51,15 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -84,6 +93,10 @@ public class MainActivity extends AppCompatActivity {
 
 
     private ImageView imageView;
+
+    private MediaCodec mediaCodec;
+    private Surface inputSurface;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -122,7 +135,46 @@ public class MainActivity extends AppCompatActivity {
         });
 //        initSocket();
 //        new Thread(() -> initNvSocket()).start();
-        Zprint.log(this.getClass(),"当前屏幕方向",getDgree());
+        Zprint.log(this.getClass(), "当前屏幕方向", getDgree());
+
+        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+
+                Canvas canvas = holder.getSurface().lockCanvas(null);
+
+                Paint paint = new Paint();
+                canvas.drawColor(getResources().getColor(R.color.colorPrimary));
+                paint.setColor(getResources().getColor(R.color.colorPrimary));
+
+                canvas.drawLine(500, 500, 1000, 1000, paint);
+                canvas.save(Canvas.ALL_SAVE_FLAG);
+                holder.getSurface().unlockCanvasAndPost(canvas);
+                View view = new View(MainActivity.this);
+                view.setDrawingCacheEnabled(true);
+                view.buildDrawingCache();
+                Bitmap bitmap= view.getDrawingCache();
+                if (imageView!=null){
+                  runOnUiThread(new Runnable() {
+                      @Override
+                      public void run() {
+                          imageView.setImageBitmap(bitmap);
+                      }
+                  });
+              }
+
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+
+            }
+        });
     }
 
     @Override
@@ -141,6 +193,9 @@ public class MainActivity extends AppCompatActivity {
                     String path = FileUtils.filePath("one.mp4");
                     File file = new File(path);
                     Zprint.log(this.getClass(), "录屏文件的位置", file.getAbsolutePath());
+
+                    projection.createVirtualDisplay("image", width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surfaceView.getHolder().getSurface(), null, null);
+
                   /*  MediaRecordThread mediaRecordThread = new MediaRecordThread(width, height, 6000000,
                             dpi, projection, file.getAbsolutePath());
                     mediaRecordThread.start();*/
@@ -152,32 +207,112 @@ public class MainActivity extends AppCompatActivity {
 
 
                     //>>>>>>>>>>>>>>>>>>>
-                    imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1);
+           /*         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 15);
                     projection.createVirtualDisplay("shot", width, height, dpi,  DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader.getSurface(), null, null);
                     SystemClock.sleep(1000);
-                    Image image = imageReader.acquireNextImage();
-                    int width = image.getWidth();
-                    int height = image.getHeight();
-                    final Image.Plane[] planes = image.getPlanes();
-                    final ByteBuffer buffer = planes[0].getBuffer();
-                    int pixelStride = planes[0].getPixelStride();
-                    int rowStride = planes[0].getRowStride();
-                    int rowPadding = rowStride - pixelStride * width;
-                    bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888);
-                    bitmap.copyPixelsFromBuffer(buffer);
-                    image.close();
-                    imageView.post(new Runnable() {
+                    Timer timer = new Timer();
+                    timer.scheduleAtFixedRate(new TimerTask() {
                         @Override
                         public void run() {
-                            imageView.setImageBitmap(bitmap);
-                            imageView.setBackgroundColor(getColor(android.R.color.black));
+                            Zprint.log(this.getClass()," 还可以取几张图片 ",imageReader.getMaxImages());
+                            Image image = imageReader.acquireNextImage();
+                            int width = image.getWidth();
+                            int height = image.getHeight();
+                            final Image.Plane[] planes = image.getPlanes();
+                            final ByteBuffer buffer = planes[0].getBuffer();
+                            int pixelStride = planes[0].getPixelStride();
+                            int rowStride = planes[0].getRowStride();
+                            int rowPadding = rowStride - pixelStride * width;
+                            bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888);
+                            bitmap.copyPixelsFromBuffer(buffer);
+                            image.close();
+                            reflect(imageReader);
+                            imageView.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    imageView.setImageBitmap(bitmap);
+                                    imageView.setBackgroundColor(getColor(android.R.color.black));
+                                }
+                            });
                         }
-                    });
+                    },1000,1000);*/
+            /*        try {
+                        prepereEncoder();
+                        projection.createVirtualDisplay("image", width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surfaceView.getHolder().getSurface(), null, null);
+                        MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+
+                        while (true) {
+                            int out = mediaCodec.dequeueOutputBuffer(bufferInfo, 10000);
+                            if (out >= 0) {
+                               *//* Image image = mediaCodec.getOutputImage(out);
+                                int width = image.getWidth();
+                                int height = image.getHeight();
+                                final Image.Plane[] planes = image.getPlanes();
+                                final ByteBuffer buffer = planes[0].getBuffer();
+                                int pixelStride = planes[0].getPixelStride();
+                                int rowStride = planes[0].getRowStride();
+                                int rowPadding = rowStride - pixelStride * width;
+                                bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888);
+                                bitmap.copyPixelsFromBuffer(buffer);
+                                image.close();
+                                imageView.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        imageView.setImageBitmap(bitmap);
+                                        imageView.setBackgroundColor(getColor(android.R.color.black));
+                                    }
+                                });*//*
+
+                            } else if (out == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                                MediaFormat mediaFormat = mediaCodec.getOutputFormat();
+
+                            }else if (out == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                                try {
+                                    Thread.sleep(10);
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+
+                        }
+
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }*/
                 }
                 break;
         }
 
     }
+
+
+    private void prepereEncoder() throws IOException {
+        //这里的宽度，高度 是从左上角原点 开始算， 如果 没有大于 virtualDisplay的宽高，只会录制 一部分内容
+        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
+        format.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
+
+        mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+        mediaCodec.configure(format, null, null, 0);
+//        inputSurface = mediaCodec.createInputSurface();//需要在createEncoderByType之后和start()之前才能创建，源码注释写的很清楚
+        mediaCodec.start();
+    }
+
+
+
+    public void reflect(ImageReader imageReader) {
+        Class<?> cla = imageReader.getClass();
+        try {
+            Method discardFreeBuffers = cla.getDeclaredMethod("discardFreeBuffers");
+            discardFreeBuffers.invoke(imageReader);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            e.printStackTrace();
+        }
+    }
+
 
     class MediaRecordThread extends Thread {
         private int mWidth;
@@ -272,18 +407,18 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void run() {
-                try {
-                    prepereEncoder();
-                    String path = Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + "first.mp4";
-                    File out = new File(path);
-                    mediaMuxer = new MediaMuxer(out.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
-                    virtualDisplay = mediaProjection.createVirtualDisplay("luping", width,height,
-                            dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, mSurface, null, null);
-                    Zprint.log(this.getClass(), "created virtual display:");
-                    recordVirtualDisplay();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+            try {
+                prepereEncoder();
+                String path = Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + "first.mp4";
+                File out = new File(path);
+                mediaMuxer = new MediaMuxer(out.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+                virtualDisplay = mediaProjection.createVirtualDisplay("luping", width, height,
+                        dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, mSurface, null, null);
+                Zprint.log(this.getClass(), "created virtual display:");
+                recordVirtualDisplay();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         private void prepereEncoder() throws IOException {
@@ -310,7 +445,7 @@ public class MainActivity extends AppCompatActivity {
                    /* byte[] bytes = new byte[outputBuffer.limit()];
                     outputBuffer.get(bytes);
                     System.out.println(">>>>>>>>> " + bytes.length);*/
-              /*      webSocket.sendBinary(bytes);*/
+                    /*      webSocket.sendBinary(bytes);*/
                     encodeToVideoTrack(outputBufferId);
                     mediaCodec.releaseOutputBuffer(outputBufferId, false);
                 } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {

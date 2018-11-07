@@ -147,6 +147,11 @@ public class StartFragment extends BaseFragment<StartContact.Presenter> implemen
 //            data.setComponent(new ComponentName(context, MyService.class));
             data.setClassName(context, MyService.class.getName());
             context.startService(data);
+//            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+//                context.startForegroundService(data);
+//            } else {
+//                context.startService(data);
+//            }
         }
     }
 
