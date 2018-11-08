@@ -22,7 +22,10 @@ import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.Message;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.DisplayMetrics;
@@ -30,18 +33,29 @@ import android.view.Display;
 import android.view.Surface;
 
 import com.admin.plani.remotescreen.start.MainActivity;
+import com.admin.plani.remotescreen.utils.ByteUtils;
+import com.admin.plani.remotescreen.utils.SocketConnect;
 import com.admin.plani.remotescreen.utils.Zprint;
 
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static android.app.Activity.RESULT_OK;
@@ -53,7 +67,11 @@ public class MyService extends Service {
     private int width;
     private int height;
     private int dpi;
+    //线程池
     private ExecutorService executorService;
+    //工作线程
+    private Handler worker;
+
     private Recorder recorder;
     //本地广播
     private LocalBroadcastManager localBroadcastManager;
@@ -64,9 +82,14 @@ public class MyService extends Service {
     private NotificationManager notificationManager;
     private final int NOTIID = 1;
     private final String CHANNELID = "service";
+    private ExecutorService service;
 
+    //socket
+    private Socket socket;
+
+    private OutputStream outputStream;
+    private InputStream inputStream;
     public MyService() {
-
     }
 
     @Override
@@ -77,7 +100,6 @@ public class MyService extends Service {
         width = dm.widthPixels;
         height = dm.heightPixels;
         dpi = dm.densityDpi;
-        executorService = Executors.newSingleThreadExecutor();
         //本地广播
         localBroadcastManager = LocalBroadcastManager.getInstance(this);
         receiver = new Receiver();
@@ -96,13 +118,31 @@ public class MyService extends Service {
         notification = initNotification("等待中");
         startForeground(NOTIID, notification);
 
+        //实例化 线程池
+        executorService = Executors.newFixedThreadPool(10);
+
+        HandlerThread handlerThread = new HandlerThread("worker");
+        handlerThread.start();
+        worker = new Handler(handlerThread.getLooper(), new Handler.Callback() {
+            @Override
+            public boolean handleMessage(Message msg) {
+                switch (msg.what){
+                    case 1:
+                        executorService.submit(recorder);
+                        break;
+                }
+                return true;
+            }
+        });
+
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         projection = projectionManager.getMediaProjection(RESULT_OK, intent);
         recorder = new Recorder(projection);
-        executorService.submit(recorder);
+        initSocket();
+
         Zprint.log(this.getClass(), " projection ", projection);
         return super.onStartCommand(intent, flags, startId);
     }
@@ -117,6 +157,8 @@ public class MyService extends Service {
     public void onDestroy() {
         super.onDestroy();
         localBroadcastManager.unregisterReceiver(receiver);
+        executorService.shutdown();
+        closeSocket();
     }
 
 
@@ -221,6 +263,8 @@ public class MyService extends Service {
                         e.printStackTrace();
                     }
 
+                    sendBytes(temp);
+
                     //录制mp4
                     encodeToVideoTrack(outputBuffer);
                     //释放输出缓冲区的数据 这样才能接受新的数据
@@ -232,15 +276,18 @@ public class MyService extends Service {
 
                     ByteBuffer sps = newOutFormat.getByteBuffer("csd-0");    // SPS
                     ByteBuffer pps = newOutFormat.getByteBuffer("csd-1");    // PPS
+                    if (sps.hasArray()) {
+                        sendBytes(sps.array());
+                        sendBytes(pps.array());
+                    }
                     Zprint.log(this.getClass(), " 输出格式 有变化 ");
                     if (mediaMuxer != null) {
                         //跟踪新的 格式的 信道
                         mVideoTrackIndex = mediaMuxer.addTrack(newOutFormat);
                         mediaMuxer.start();
                     }
-
                 } else if (outputBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    Zprint.log(this.getClass(), " INFO_TRY_AGAIN_LATER  ");
+//                    Zprint.log(this.getClass(), " INFO_TRY_AGAIN_LATER  ");
                 /*    try {
                         Thread.sleep(10);
                     } catch (InterruptedException e) {
@@ -324,5 +371,63 @@ public class MyService extends Service {
                 .build();
         return notification;
     }
+
+    private void initSocket() {
+        SocketConnect socketConnect = new SocketConnect("192.168.2.169", 9936);
+        Future<Socket> future = executorService.submit(socketConnect);
+        try {
+            Socket temp = future.get();
+            if (temp!=null){
+                if (socket!=null){
+                    if (socket.isConnected()){
+                        socket.close();
+                    }
+                    //回收原本的内存空间
+                    socket=null;
+                }
+                socket = temp;
+                outputStream = socket.getOutputStream();
+                inputStream = socket.getInputStream();
+                Zprint.log(this.getClass()," socket 链接成功");
+                worker.sendEmptyMessage(1);
+            }else {
+                Zprint.log(this.getClass()," socket 链接失败 重试");
+                initSocket();
+            }
+        } catch (InterruptedException | ExecutionException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void closeSocket() {
+        if (socket != null && socket.isConnected()) {
+            try {
+                socket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void sendBytes(byte[] target) {
+        if (socket==null||socket.isClosed()||outputStream==null){
+            return;
+        }
+        //发送数组的长度
+        int len = target.length;
+        //长度写入一个4字节的数组中
+        byte[] lenBytes = ByteUtils.IntToByteArray(len);
+        //将4 字节的数组进行 扩容
+        byte[] endBytes = Arrays.copyOf(lenBytes, target.length + lenBytes.length);
+        //将发送数组 的内容 写入 新数组
+        System.arraycopy(target, 0, endBytes, lenBytes.length, target.length);
+        try {
+            outputStream.write(endBytes);
+            outputStream.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
 
 }
