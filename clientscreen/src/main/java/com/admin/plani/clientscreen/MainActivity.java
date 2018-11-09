@@ -52,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Zprint.log(this.getClass(),"运行 ");
+        Zprint.log(this.getClass(), "运行 ");
         executorService = Executors.newFixedThreadPool(10);
 
         ip = findViewById(R.id.showIp);
@@ -97,7 +97,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
     public void initSocket() {
         try {
             Log.d(TAG, "  线程 " + Thread.currentThread().getName());
@@ -111,8 +110,9 @@ public class MainActivity extends AppCompatActivity {
             byte[] sps = readBytes(spsLen, is);
             int ppsLen = readLen(is);
             byte[] pps = readBytes(ppsLen, is);
-            setSpsAndPPs(sps,pps);
-            while (!isExit){
+            setSpsAndPPs(sps, pps);
+            while (!isExit) {
+                System.out.println("》》》》读取数据");
                 int len = readLen(is);
                 byte[] temp = readBytes(len, is);
                 inData(temp);
@@ -127,17 +127,17 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        Zprint.log(this.getClass(),"运行 ");
+        Zprint.log(this.getClass(), "运行 ");
     }
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-         Zprint.log(this.getClass(),"运行 ");
+        Zprint.log(this.getClass(), "运行 ");
     }
 
     public void initMediaCodec() {
-        format  = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1080, 1920);
+        format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1080, 1920);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         format.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
@@ -156,49 +156,56 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-   //设置sps  和pps
-    public void setSpsAndPPs(byte[]sps,byte[]pps){
-        if (format==null){
+    //设置sps  和pps
+    public void setSpsAndPPs(byte[] sps, byte[] pps) {
+        if (format == null) {
             return;
         }
-        format.setByteBuffer("csd-0",ByteBuffer.wrap(sps));
-        format.setByteBuffer("csd-1",ByteBuffer.wrap(pps));
+        format.setByteBuffer("csd-0", ByteBuffer.wrap(sps));
+        format.setByteBuffer("csd-1", ByteBuffer.wrap(pps));
     }
 
     //读取四个字节，得到传来的一帧图像 数组
-    public int readLen(InputStream inputStream) throws Exception{
+    public int readLen(InputStream inputStream) throws Exception {
         byte[] temp = new byte[4];
-        int len=0;
-        while (len>4){
-            if ((len=inputStream.read(temp))){
-                return ByteUtils.ByteArrayToInt(temp);
+        int len = 4;
+        for (int i = 0; i < len; i++) {
+            int date = inputStream.read();
+            if (date==-1){
+                throw new IllegalAccessException("流结束了");
             }
+            temp[i] = (byte) date;
         }
+        return ByteUtils.ByteArrayToInt(temp);
     }
 
     //读取一帧图像的数组
-    public byte[] readBytes(int len,InputStream inputStream) throws Exception{
+    public byte[] readBytes(int len, InputStream inputStream) throws Exception {
         byte[] temp = new byte[len];
-        if ( inputStream.read(temp)==4){
-            return temp;
-        }else {
-            throw new NullPointerException(" stream 流读取异常");
+        for (int i = 0; i <len ; i++) {
+            temp[i] = (byte) inputStream.read();
         }
+        return temp;
     }
 
-    public void inData(byte[] data){
-        if (mediaCodec==null){
+    public void inData(byte[] data) {
+        if (mediaCodec == null) {
             return;
         }
         //获取到输入缓冲区的 索引
-       int inputBufferID= mediaCodec.dequeueInputBuffer(0);
-       if (inputBufferID>=0){
-           ByteBuffer inputByte = mediaCodec.getInputBuffer(inputBufferID);
-           inputByte.clear();
-           inputByte.put(data);
-           mediaCodec.queueInputBuffer(inputBufferID,0,data.length,System.nanoTime()/1000L,MediaCodec.BUFFER_FLAG_SYNC_FRAME);
-       }
-
+        int inputBufferID = mediaCodec.dequeueInputBuffer(-1);
+        if (inputBufferID >= 0) {
+            ByteBuffer inputByte = mediaCodec.getInputBuffer(inputBufferID);
+            inputByte.clear();
+            inputByte.put(data);
+            mediaCodec.queueInputBuffer(inputBufferID, 0, data.length, System.nanoTime() / 1000L, MediaCodec.BUFFER_FLAG_SYNC_FRAME);
+        }
+        MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+        int outputBufferID = mediaCodec.dequeueOutputBuffer(bufferInfo, 0);
+        if(outputBufferID>=0) {
+            mediaCodec.releaseOutputBuffer(outputBufferID, true);
+        }
+        System.out.println("》》》》解析");
     }
 
     Handler.Callback workerCallback = new Handler.Callback() {
