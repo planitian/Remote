@@ -29,6 +29,7 @@ import android.os.Message;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 
@@ -37,6 +38,7 @@ import com.admin.plani.remotescreen.utils.ByteUtils;
 import com.admin.plani.remotescreen.utils.SocketConnect;
 import com.admin.plani.remotescreen.utils.Zprint;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -63,32 +65,39 @@ import static android.app.PendingIntent.FLAG_UPDATE_CURRENT;
 
 public class MyService extends Service {
     private MediaProjectionManager projectionManager;
-    private MediaProjection projection;
-    private int width;
-    private int height;
-    private int dpi;
+    private MediaProjection        projection;
+    private int                    width;
+    private int                    height;
+    private int                    dpi;
     //线程池
-    private ExecutorService executorService;
+    private ExecutorService        executorService;
     //工作线程
-    private Handler worker;
+    private Handler                worker;
 
-    private Recorder recorder;
+    private Recorder              recorder;
     //本地广播
     private LocalBroadcastManager localBroadcastManager;
-    private Receiver receiver;
+    private Receiver              receiver;
 
     //t通知
     Notification notification;
-    private NotificationManager notificationManager;
-    private final int NOTIID = 1;
-    private final String CHANNELID = "service";
-    private ExecutorService service;
+    private       NotificationManager notificationManager;
+    private final int                 NOTIID    = 1;
+    private final String              CHANNELID = "service";
+    private       ExecutorService     service;
 
     //socket
     private Socket socket;
 
-    private OutputStream outputStream;
-    private InputStream inputStream;
+    private BufferedOutputStream outputStream;
+    private BufferedInputStream  inputStream;
+
+    private int anInt = 0;
+
+    private static final int SPS = 0;
+    private static final int PPS = 1;
+    private static final int FRA = 2;
+
     public MyService() {
     }
 
@@ -97,9 +106,9 @@ public class MyService extends Service {
         super.onCreate();
         projectionManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        width = dm.widthPixels;
-        height = dm.heightPixels;
-        dpi = dm.densityDpi;
+        width = (int) (dm.widthPixels / 1.5);
+        height = (int) (dm.heightPixels / 1.5);
+        dpi = (int) (dm.densityDpi / 1.5);
         //本地广播
         localBroadcastManager = LocalBroadcastManager.getInstance(this);
         receiver = new Receiver();
@@ -126,7 +135,7 @@ public class MyService extends Service {
         worker = new Handler(handlerThread.getLooper(), new Handler.Callback() {
             @Override
             public boolean handleMessage(Message msg) {
-                switch (msg.what){
+                switch (msg.what) {
                     case 1:
                         executorService.submit(recorder);
                         break;
@@ -141,8 +150,7 @@ public class MyService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         projection = projectionManager.getMediaProjection(RESULT_OK, intent);
         recorder = new Recorder(projection);
-        initSocket();
-
+        executorService.submit(() -> initSocket());
         Zprint.log(this.getClass(), " projection ", projection);
         return super.onStartCommand(intent, flags, startId);
     }
@@ -164,14 +172,14 @@ public class MyService extends Service {
 
     private class Recorder implements Runnable {
         private MediaProjection mProjection;
-        private MediaCodec mediaCodec;
-        private Surface mSurface;
+        private MediaCodec      mediaCodec;
+        private Surface         mSurface;
 
         private MediaMuxer mediaMuxer;//这是可选的，这是将录屏文件 写到本地用的 实现同样的功能 MediaRecorder 也可以
 
-        private VirtualDisplay virtualDisplay;
+        private VirtualDisplay        virtualDisplay;
         private MediaCodec.BufferInfo bufferInfo;//缓冲区信息
-        private AtomicBoolean atomicBoolean;//控制是否退出录制
+        private AtomicBoolean         atomicBoolean;//控制是否退出录制
 
         private int mVideoTrackIndex; //标识 mediaformat的 信道
 
@@ -187,7 +195,7 @@ public class MyService extends Service {
                 notification = initNotification("推送中");
                 notificationManager.notify(NOTIID, notification);
                 prepereEncoder();
-                mediaMuxer = initMediaMuxer();
+//                mediaMuxer = initMediaMuxer();
                 //如果想更改录制视频的分辨率 可以在这里更改
                 virtualDisplay = mProjection.createVirtualDisplay("MyService", width, height,
                         dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, mSurface, null, null);
@@ -210,9 +218,8 @@ public class MyService extends Service {
             MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
             format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
             format.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
-            format.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
-            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
-            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
+            format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
+            format.setFloat(MediaFormat.KEY_I_FRAME_INTERVAL, 0);
 
             mediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
             mediaCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
@@ -231,7 +238,7 @@ public class MyService extends Service {
          * @param local 标识 要不要同时录制mp4文件到本机存储
          */
         private void recordVirtualDisplay(Boolean local) {
-            if (local && mediaMuxer == null) {
+    /*        if (local && mediaMuxer == null) {
                 throw new NullPointerException("如果想录制mp4到本机，必须先调用 initMediaMuxer（）");
             }
             File file = new File("/storage/emulated/0/Download/", "ss.apk");
@@ -248,25 +255,30 @@ public class MyService extends Service {
                 bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
-            }
+            }*/
+            byte[] temp = null;
             while (atomicBoolean.get()) {
-                int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, 10000);
+                int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, 0);
                 if (outputBufferId >= 0) {
-                    Zprint.log(this.getClass(), "可以录制 ");
+//                    Zprint.log(this.getClass(), "可以录制 ");
                     ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(outputBufferId);
-                    // 这里 直播的话 传送 缓存数组
-                    byte[] temp = new byte[outputBuffer.limit()];
-                    outputBuffer.get(temp);
-                    try {
+
+                  /*  try {
                         bufferedOutputStream.write(temp);
                     } catch (IOException e) {
                         e.printStackTrace();
+                    }*/
+                    if (outputBuffer.hasArray()) {
+                        temp = outputBuffer.array();
+                    } else {
+                        // 这里 直播的话 传送 缓存数组
+                        temp = new byte[outputBuffer.limit()];
+                        outputBuffer.get(temp);
                     }
-
-                    sendBytes(temp);
+                    sendBytes(temp,FRA);
 
                     //录制mp4
-                    encodeToVideoTrack(outputBuffer);
+//                    encodeToVideoTrack(outputBuffer);
                     //释放输出缓冲区的数据 这样才能接受新的数据
                     mediaCodec.releaseOutputBuffer(outputBufferId, false);
                 } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
@@ -277,8 +289,8 @@ public class MyService extends Service {
                     ByteBuffer sps = newOutFormat.getByteBuffer("csd-0");    // SPS
                     ByteBuffer pps = newOutFormat.getByteBuffer("csd-1");    // PPS
                     if (sps.hasArray()) {
-                        sendBytes(sps.array());
-                        sendBytes(pps.array());
+                        sendBytes(sps.array(),SPS);
+                        sendBytes(pps.array(),PPS);
                     }
                     Zprint.log(this.getClass(), " 输出格式 有变化 ");
                     if (mediaMuxer != null) {
@@ -295,13 +307,13 @@ public class MyService extends Service {
                     }*/
                 }
             }
-            try {
+          /*  try {
                 bufferedOutputStream.flush();
                 bufferedOutputStream.close();
             } catch (IOException e) {
                 e.printStackTrace();
 
-            }
+            }*/
 
             //告诉编码器 结束流
             mediaCodec.signalEndOfInputStream();
@@ -335,7 +347,6 @@ public class MyService extends Service {
             }
             if (bufferInfo.size == 0) {
                 output = null;
-            } else {
             }
             if (output != null) {
                 output.position(bufferInfo.offset);
@@ -373,25 +384,25 @@ public class MyService extends Service {
     }
 
     private void initSocket() {
-        SocketConnect socketConnect = new SocketConnect("192.168.2.169", 9936);
+        SocketConnect socketConnect = new SocketConnect("10.0.2.2", 5553);
         Future<Socket> future = executorService.submit(socketConnect);
         try {
             Socket temp = future.get();
-            if (temp!=null){
-                if (socket!=null){
-                    if (socket.isConnected()){
+            if (temp != null) {
+                if (socket != null) {
+                    if (socket.isConnected()) {
                         socket.close();
                     }
                     //回收原本的内存空间
-                    socket=null;
+                    socket = null;
                 }
                 socket = temp;
-                outputStream = socket.getOutputStream();
-                inputStream = socket.getInputStream();
-                Zprint.log(this.getClass()," socket 链接成功");
+                outputStream = new BufferedOutputStream(socket.getOutputStream());
+                inputStream = new BufferedInputStream(socket.getInputStream());
+                Zprint.log(this.getClass(), " socket 链接成功");
                 worker.sendEmptyMessage(1);
-            }else {
-                Zprint.log(this.getClass()," socket 链接失败 重试");
+            } else {
+                Zprint.log(this.getClass(), " socket 链接失败 重试");
                 initSocket();
             }
         } catch (InterruptedException | ExecutionException | IOException e) {
@@ -409,23 +420,34 @@ public class MyService extends Service {
         }
     }
 
-    public void sendBytes(byte[] target) {
-        if (socket==null||socket.isClosed()||outputStream==null){
+    /**
+     * @param target 要发送的数组
+     * @param type  数组内容的类型 是SPS 还是PPS  FRA
+     */
+    public void sendBytes(byte[] target,int type) {
+        if (socket == null || socket.isClosed() || outputStream == null) {
             return;
         }
         //发送数组的长度
         int len = target.length;
         //长度写入一个4字节的数组中
         byte[] lenBytes = ByteUtils.IntToByteArray(len);
-        //将4 字节的数组进行 扩容
-        byte[] endBytes = Arrays.copyOf(lenBytes, target.length + lenBytes.length);
+
+        //将4 字节的数组进行 扩容 末尾加一是给type留位置
+        byte[] endBytes = Arrays.copyOf(lenBytes, target.length + lenBytes.length+1);
+        //将发送内容的 type写入数组
+        endBytes[lenBytes.length] = (byte)type;
         //将发送数组 的内容 写入 新数组
-        System.arraycopy(target, 0, endBytes, lenBytes.length, target.length);
+        System.arraycopy(target, 0, endBytes, lenBytes.length+1, target.length);
         try {
+            System.out.println(" 图像数组读取 "+len+"   "+endBytes.length);
             outputStream.write(endBytes);
             outputStream.flush();
+            Log.d(" 输出的数据", anInt+++"");
         } catch (IOException e) {
             e.printStackTrace();
+            closeSocket();
+            initSocket();
         }
     }
 
