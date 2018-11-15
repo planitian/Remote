@@ -1,13 +1,9 @@
 package com.admin.plani.clientscreen;
 
-import android.content.Context;
+
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
@@ -40,29 +36,28 @@ import java.util.concurrent.Future;
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 
-    private TextView    ip;
+    private TextView ip;
     private SurfaceView show;
 
-    private MediaCodec            mediaCodec;
-    private Surface               surface;
+    private MediaCodec mediaCodec;
+    private Surface surface;
     private MediaCodec.BufferInfo bufferInfo;
-    private MediaFormat           format;
-    private Handler               workerHandler;
+    private MediaFormat format;
+    private Handler workerHandler;
     Handler mainHandler = new Handler(new mainHandler());
     private ExecutorService executorService;
 
-    private Socket              socket = null;
-    private BufferedInputStream is     = null;
+    private Socket socket = null;
+    private BufferedInputStream is = null;
 
     private static final int INITMEDIACODEC = 1;
-    private static final int INITSOCKET     = 2;
+    private static final int INITSOCKET = 2;
 
-    private byte[]     lenByte     = new byte[4];
-    private byte[]     contentByte = new byte[1024];
-    private ByteBuffer wrap        = ByteBuffer.allocate(1024);
-    private int        anInt       = 0;
+    private byte[] lenByte = new byte[4];
+    private byte[] contentByte = new byte[1024];
+    private ByteBuffer wrap = ByteBuffer.allocate(1024);
+    private int anInt = 0;
 
-    private boolean isCreate = false;
 
     private byte[] globalSps;
     private byte[] globalPps;
@@ -81,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
         workerHandler = new Handler(worker.getLooper(), workerCallback);
         //添加回调 确保 surface 一定被打开
         show.getHolder().addCallback(surfaceCall);
-
+        initFormat();
     }
 
 
@@ -93,7 +88,9 @@ public class MainActivity extends AppCompatActivity {
 
 
     public void initSocket() {
-
+           if (socket!=null){
+               return;
+           }
         try {
             Log.d(TAG, "  线程 " + Thread.currentThread().getName());
           /*  ServerSocket serverSocket = new ServerSocket(9936);
@@ -107,10 +104,16 @@ public class MainActivity extends AppCompatActivity {
             is = new BufferedInputStream(socket.getInputStream());
             while (true) {
                 int len = readLen(is);
+                if (len == -1) {
+                    break;
+                }
                 byte[] temp = readBytes(len, is);
-                switch (temp[0]){
+                if (temp == null) {
+                    break;
+                }
+                switch (temp[0]) {
                     case 0:
-                        setPps(temp);
+                        setSps(temp);
                         break;
                     case 1:
                         setPps(temp);
@@ -123,19 +126,26 @@ public class MainActivity extends AppCompatActivity {
             }
         } catch (Exception e) {
             Log.d(TAG, e.toString());
-
         } finally {
             releaseSocket();
             initSocket();
         }
     }
 
-
-    private void copyByte(byte[] bytes, byte[] target) {
-        System.arraycopy(bytes, 0, target, 0, bytes.length);
+    //复制sps数组
+    private void copySps(byte[] bytes) {
+        globalSps = new byte[bytes.length];
+        System.arraycopy(bytes, 0, globalPps, 0, bytes.length);
     }
 
-    public void initMediaCodec() {
+    //复制pps数组
+    private void copyPps(byte[] bytes) {
+        globalPps = new byte[bytes.length];
+        System.arraycopy(bytes, 0, globalPps, 0, bytes.length);
+    }
+   //实例Format
+    public void initFormat() {
+
         format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1080, 1920);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
 //        format.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
@@ -147,37 +157,41 @@ public class MainActivity extends AppCompatActivity {
         if (globalPps != null) {
             format.setByteBuffer("csd-1", ByteBuffer.wrap(globalPps));
         }
-
         bufferInfo = new MediaCodec.BufferInfo();
+    }
+
+    public void initMediaCodec() {
         try {
+            //创建解码器  注意是解码器
             mediaCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
             if (surface != null) {
                 mediaCodec.configure(format, surface, null, 0);
                 mediaCodec.start();
+                workerHandler.sendEmptyMessage(INITSOCKET);
             }
-            if (socket != null) {
-                return;
-            }
-            workerHandler.sendEmptyMessage(INITSOCKET);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     //设置sps
-    private void setSps(byte[]sps){
+    private void setSps(byte[] sps) {
         if (format == null) {
-            return;
+            initFormat();
         }
-        format.setByteBuffer("csd-0", ByteBuffer.wrap(sps,1,sps.length-1));
+        format.setByteBuffer("csd-0", ByteBuffer.wrap(sps, 1, sps.length - 1));
+        copySps(sps);
     }
+
     //设置pps
-    private void  setPps(byte[]pps){
+    private void setPps(byte[] pps) {
         if (format == null) {
-            return;
+            initFormat();
         }
-        format.setByteBuffer("csd-1", ByteBuffer.wrap(pps,1,pps.length));
+        format.setByteBuffer("csd-1", ByteBuffer.wrap(pps, 1, pps.length));
+        copyPps(pps);
     }
+
     //读取四个字节，得到传来的一帧图像 数组
     public int readLen(BufferedInputStream inputStream) throws Exception {
         int len = 0;
@@ -186,41 +200,32 @@ public class MainActivity extends AppCompatActivity {
             len = inputStream.read(lenByte, len, 4 - len);
             if (len == -1) {
                 Log.d(TAG, "socket 关闭");
-                releaseSocket();
-                initSocket();
+                return -1;
             }
             count += len;
         }
-     /*   int len = 4;
-        for (int i = 0; i < len; i++) {
-            int date = inputStream.read();
-            if (date == -1) {
-                throw new IllegalAccessException("流结束了");
-            }
-            temp[i] = (byte) date;
-        }*/
         return ByteUtils.ByteArrayToInt(lenByte);
     }
 
     //读取一帧图像的数组
     public byte[] readBytes(int len, BufferedInputStream inputStream) throws Exception {
         //加一是因为 len 只是内容长度，还有一位是type 位置
-        byte[] temp = new byte[len+1];
+        byte[] temp = new byte[len + 1];
 
         int read = 0;
         int countByte = 0;
-        while (countByte<len+1){
-            read = inputStream.read(temp,read,len-countByte);
-            if (read==-1){
+        while (countByte < len + 1) {
+            read = inputStream.read(temp, read, len + 1 - countByte);
+            if (read == -1) {
                 return null;
             }
             countByte += read;
         }
         return temp;
     }
-
+    //将得到的数据 传入 mediaCodec
     public void inData(byte[] data) {
-        if (mediaCodec == null) {
+        if (mediaCodec == null||globalSps==null||globalPps==null) {
             return;
         }
         //获取到输入缓冲区的 索引
@@ -229,7 +234,7 @@ public class MainActivity extends AppCompatActivity {
             ByteBuffer inputByte = mediaCodec.getInputBuffer(inputBufferID);
 //            System.out.println(">>>>>>>>>>>>>>>"+inputByte.capacity());
             inputByte.clear();
-            inputByte.put(data,1,data.length-1);
+            inputByte.put(data, 1, data.length - 1);
             mediaCodec.queueInputBuffer(inputBufferID, 0, data.length, System.nanoTime() / 1000L, MediaCodec.BUFFER_FLAG_KEY_FRAME);
         }
 
@@ -242,7 +247,6 @@ public class MainActivity extends AppCompatActivity {
 
 
     private void releaseMedia() {
-
         if (mediaCodec != null) {
             mediaCodec.release();
         }
@@ -272,12 +276,7 @@ public class MainActivity extends AppCompatActivity {
                     initMediaCodec();
                     break;
                 case INITSOCKET:
-                    executorService.submit(new Runnable() {
-                        @Override
-                        public void run() {
-                            initSocket();
-                        }
-                    });
+                    executorService.submit(() -> initSocket());
                     break;
 
             }
@@ -303,19 +302,18 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void surfaceCreated(SurfaceHolder holder) {
             Zprint.log(this.getClass(), " Surface 创建了");
-            isCreate = true;
             surface = holder.getSurface();
             workerHandler.sendEmptyMessage(INITMEDIACODEC);
         }
 
         @Override
         public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-
+            surface = holder.getSurface();
+            workerHandler.sendEmptyMessage(INITMEDIACODEC);
         }
 
         @Override
         public void surfaceDestroyed(SurfaceHolder holder) {
-            isCreate = false;
             releaseMedia();
         }
     };
