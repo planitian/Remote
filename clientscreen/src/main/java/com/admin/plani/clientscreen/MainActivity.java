@@ -125,7 +125,7 @@ public class MainActivity extends AppCompatActivity {
                 Log.d(TAG, "读取数据  " + anInt++);
             }
         } catch (Exception e) {
-            Log.d(TAG, e.toString());
+            e.printStackTrace();
         } finally {
             releaseSocket();
             initSocket();
@@ -274,12 +274,13 @@ public class MainActivity extends AppCompatActivity {
             switch (msg.what) {
                 case INITMEDIACODEC:
                     initMediaCodec();
+                    Zprint.log(this.getClass()," initMediaCodec() ");
                     break;
                 case INITSOCKET:
                     executorService.submit(() -> initSocket());
                     break;
-
             }
+
             return true;
         }
     };
@@ -309,7 +310,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
             surface = holder.getSurface();
-            workerHandler.sendEmptyMessage(INITMEDIACODEC);
+//            workerHandler.sendEmptyMessage(INITMEDIACODEC);
         }
 
         @Override

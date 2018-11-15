@@ -432,7 +432,9 @@ public class MyService extends Service {
         int len = target.length;
         //长度写入一个4字节的数组中
         byte[] lenBytes = ByteUtils.IntToByteArray(len);
-
+        for (int i = 0; i <lenBytes.length ; i++) {
+            System.out.println(lenBytes[i]);
+        }
         //将4 字节的数组进行 扩容 末尾加一是给type留位置
         byte[] endBytes = Arrays.copyOf(lenBytes, target.length + lenBytes.length+1);
         //将发送内容的 type写入数组
