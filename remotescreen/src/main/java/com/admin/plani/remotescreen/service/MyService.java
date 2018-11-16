@@ -219,7 +219,7 @@ public class MyService extends Service {
             format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
             format.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
             format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
-            format.setFloat(MediaFormat.KEY_I_FRAME_INTERVAL, 0);
+            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
 
             mediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
             mediaCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
@@ -384,7 +384,7 @@ public class MyService extends Service {
     }
 
     private void initSocket() {
-        SocketConnect socketConnect = new SocketConnect("10.0.2.2", 5553);
+        SocketConnect socketConnect = new SocketConnect("192.168.2.170", 5553);
         Future<Socket> future = executorService.submit(socketConnect);
         try {
             Socket temp = future.get();
@@ -428,19 +428,19 @@ public class MyService extends Service {
         if (socket == null || socket.isClosed() || outputStream == null) {
             return;
         }
-        //发送数组的长度
-        int len = target.length;
+        //发送数组的长度  本身长度 加标识长度 1字节
+        int len = target.length+1;
         //长度写入一个4字节的数组中
         byte[] lenBytes = ByteUtils.IntToByteArray(len);
         for (int i = 0; i <lenBytes.length ; i++) {
             System.out.println(lenBytes[i]);
         }
-        //将4 字节的数组进行 扩容 末尾加一是给type留位置
-        byte[] endBytes = Arrays.copyOf(lenBytes, target.length + lenBytes.length+1);
-        //将发送内容的 type写入数组
-        endBytes[lenBytes.length] = (byte)type;
+        //将4 字节的数组进行 扩容  加上发送数组的长度和 标识长度
+        byte[] endBytes = Arrays.copyOf(lenBytes, len + lenBytes.length);
+
+        endBytes[4] = (byte) type;
         //将发送数组 的内容 写入 新数组
-        System.arraycopy(target, 0, endBytes, lenBytes.length+1, target.length);
+        System.arraycopy(target, 0, endBytes, lenBytes.length+1,len-1);
         try {
             System.out.println(" 图像数组读取 "+len+"   "+endBytes.length);
             outputStream.write(endBytes);
@@ -452,6 +452,4 @@ public class MyService extends Service {
             initSocket();
         }
     }
-
-
 }

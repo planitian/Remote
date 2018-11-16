@@ -59,8 +59,8 @@ public class MainActivity extends AppCompatActivity {
     private int anInt = 0;
 
 
-    private byte[] globalSps;
-    private byte[] globalPps;
+    private byte[] globalSps=null;
+    private byte[] globalPps=null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,17 +93,18 @@ public class MainActivity extends AppCompatActivity {
            }
         try {
             Log.d(TAG, "  线程 " + Thread.currentThread().getName());
-          /*  ServerSocket serverSocket = new ServerSocket(9936);
-            Socket socket = serverSocket.accept();*/
-            socket = new Socket("192.168.0.104", 7776);
+            ServerSocket serverSocket = new ServerSocket(5553);
+             socket = serverSocket.accept();
+//            socket = new Socket("192.168.0.104", 7776);
             socket.setTcpNoDelay(true);
-            socket.setKeepAlive(true);
+//            socket.setKeepAlive(true);
           /*  SocketAddress socketAddress = new InetSocketAddress("192.168.0.104", 7777);
             socket.connect(socketAddress,3000);*/
             Log.d(TAG, "  socket 运行成功");
             is = new BufferedInputStream(socket.getInputStream());
             while (true) {
                 int len = readLen(is);
+                System.out.println(" 头部长度 len "+len);
                 if (len == -1) {
                     break;
                 }
@@ -135,6 +136,7 @@ public class MainActivity extends AppCompatActivity {
     //复制sps数组
     private void copySps(byte[] bytes) {
         globalSps = new byte[bytes.length];
+        System.out.println(this.globalSps==null);
         System.arraycopy(bytes, 0, globalPps, 0, bytes.length);
     }
 
@@ -180,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
             initFormat();
         }
         format.setByteBuffer("csd-0", ByteBuffer.wrap(sps, 1, sps.length - 1));
-        copySps(sps);
+//        copySps(sps);
     }
 
     //设置pps
@@ -189,7 +191,7 @@ public class MainActivity extends AppCompatActivity {
             initFormat();
         }
         format.setByteBuffer("csd-1", ByteBuffer.wrap(pps, 1, pps.length));
-        copyPps(pps);
+//        copyPps(pps);
     }
 
     //读取四个字节，得到传来的一帧图像 数组
@@ -204,23 +206,27 @@ public class MainActivity extends AppCompatActivity {
             }
             count += len;
         }
+        for (int i = 0; i < lenByte.length; i++) {
+            System.out.println(lenByte[i]);
+        }
         return ByteUtils.ByteArrayToInt(lenByte);
     }
 
     //读取一帧图像的数组
     public byte[] readBytes(int len, BufferedInputStream inputStream) throws Exception {
-        //加一是因为 len 只是内容长度，还有一位是type 位置
-        byte[] temp = new byte[len + 1];
+        //len 包含标识字节 1位
+        byte[] temp = new byte[len];
 
         int read = 0;
         int countByte = 0;
-        while (countByte < len + 1) {
-            read = inputStream.read(temp, read, len + 1 - countByte);
+        while (countByte < len) {
+            read = inputStream.read(temp, read, len - countByte);
             if (read == -1) {
                 return null;
             }
             countByte += read;
         }
+        System.out.println(" 读取的数据 "+countByte);
         return temp;
     }
     //将得到的数据 传入 mediaCodec

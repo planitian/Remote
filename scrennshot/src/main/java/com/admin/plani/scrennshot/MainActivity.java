@@ -47,6 +47,9 @@ import com.neovisionaries.ws.client.WebSocketException;
 import com.neovisionaries.ws.client.WebSocketFactory;
 import com.neovisionaries.ws.client.WebSocketFrame;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -134,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 //        initSocket();
-//        new Thread(() -> initNvSocket()).start();
+        new Thread(() -> initNvSocket()).start();
         Zprint.log(this.getClass(), "当前屏幕方向", getDgree());
 
         surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
@@ -577,7 +580,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void initNvSocket() {
         try {
-            webSocket = new WebSocketFactory().createSocket("ws://192.168.1.149:8080/websocket/in", 1000)
+            webSocket = new WebSocketFactory().createSocket("ws://192.168.2.144:8025/remote/control", 1000)
                     .setFrameQueueSize(9)
                     .setMissingCloseFrameAllowed(false)
                     .addListener(new WsListener())
@@ -591,7 +594,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onTextMessage(WebSocket websocket, String text) throws Exception {
             super.onTextMessage(websocket, text);
-            Zprint.log(this.getClass(), "webSocket得到消息");
+            Zprint.log(this.getClass(), "webSocket得到消息",text);
 
         }
 
@@ -599,6 +602,9 @@ public class MainActivity extends AppCompatActivity {
         public void onConnected(WebSocket websocket, Map<String, List<String>> headers) throws Exception {
             super.onConnected(websocket, headers);
             Zprint.log(this.getClass(), "webSocket已经连接");
+
+            sendHeart(webSocket);
+
         }
 
         @Override
@@ -610,6 +616,33 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onDisconnected(WebSocket websocket, WebSocketFrame serverCloseFrame, WebSocketFrame clientCloseFrame, boolean closedByServer) throws Exception {
             super.onDisconnected(websocket, serverCloseFrame, clientCloseFrame, closedByServer);
+        }
+    }
+
+    private void sendHeart(WebSocket webSocket){
+
+
+        String sn = SNandCodeUtil.getAndroidOsSystemProperties(SNandCodeUtil.SN);
+        if (sn==null||sn.isEmpty()){
+            sn = SNandCodeUtil.SERIALNUMBER;
+        }
+        Zprint.log(this.getClass(),"sn",sn);
+        JSONObject heart = new JSONObject();
+        try {
+            heart.put("code", "1000");
+            heart.put("eq_sn", sn);
+
+            TimerTask task = new TimerTask() {
+                @Override
+                public void run() {
+                    webSocket.sendText(heart.toString());
+                    Zprint.log(this.getClass(),"发送心跳");
+                }
+            };
+            Timer timer = new Timer();
+            timer.scheduleAtFixedRate(task, 1, 5000);
+        } catch (JSONException e) {
+            e.printStackTrace();
         }
     }
 
