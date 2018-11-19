@@ -1,1 +1,1 @@
-include ':app', ':scrennshot', ':remotescreen', ':clientscreen'
+include  ':scrennshot', ':remotescreen'
