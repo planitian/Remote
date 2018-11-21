@@ -218,7 +218,7 @@ public class MyService extends Service {
             MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
             format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
             format.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
-            format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
+            format.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
             format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
 
             mediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
@@ -256,7 +256,7 @@ public class MyService extends Service {
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
             }*/
-            byte[] temp = null;
+
             while (atomicBoolean.get()) {
                 int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, 0);
                 if (outputBufferId >= 0) {
@@ -268,13 +268,11 @@ public class MyService extends Service {
                     } catch (IOException e) {
                         e.printStackTrace();
                     }*/
-                    if (outputBuffer.hasArray()) {
-                        temp = outputBuffer.array();
-                    } else {
+
                         // 这里 直播的话 传送 缓存数组
-                        temp = new byte[outputBuffer.limit()];
-                        outputBuffer.get(temp);
-                    }
+                       byte[] temp = new byte[outputBuffer.limit()];
+                       outputBuffer.get(temp);
+
                     sendBytes(temp,FRA);
 
                     //录制mp4
@@ -384,7 +382,7 @@ public class MyService extends Service {
     }
 
     private void initSocket() {
-        SocketConnect socketConnect = new SocketConnect("192.168.2.170", 5553);
+        SocketConnect socketConnect = new SocketConnect("192.168.0.108", 5553);
         Future<Socket> future = executorService.submit(socketConnect);
         try {
             Socket temp = future.get();
@@ -432,9 +430,9 @@ public class MyService extends Service {
         int len = target.length+1;
         //长度写入一个4字节的数组中
         byte[] lenBytes = ByteUtils.IntToByteArray(len);
-        for (int i = 0; i <lenBytes.length ; i++) {
+     /*   for (int i = 0; i <lenBytes.length ; i++) {
             System.out.println(lenBytes[i]);
-        }
+        }*/
         //将4 字节的数组进行 扩容  加上发送数组的长度和 标识长度
         byte[] endBytes = Arrays.copyOf(lenBytes, len + lenBytes.length);
 
@@ -442,10 +440,10 @@ public class MyService extends Service {
         //将发送数组 的内容 写入 新数组
         System.arraycopy(target, 0, endBytes, lenBytes.length+1,len-1);
         try {
-            System.out.println(" 图像数组读取 "+len+"   "+endBytes.length);
+            System.out.println(" 图像数组读取 "+len+"   "+" 数组类型 "+type+"  发送数组 最后一位数据 "+endBytes[endBytes.length-1]);
             outputStream.write(endBytes);
             outputStream.flush();
-            Log.d(" 输出的数据", anInt+++"");
+            Log.d(" 第几次数据", anInt+++"");
         } catch (IOException e) {
             e.printStackTrace();
             closeSocket();
