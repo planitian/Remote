@@ -100,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
     public void initSocket() {
         try {
             Log.d(TAG, "  线程 " + Thread.currentThread().getName());
-            ServerSocket serverSocket = new ServerSocket(9936);
+            ServerSocket serverSocket = new ServerSocket(9937);
             Socket socket = serverSocket.accept();
             InputStream is = socket.getInputStream();
 

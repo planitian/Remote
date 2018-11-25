@@ -29,10 +29,12 @@ import android.os.Message;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 
 import com.admin.plani.remotescreen.start.MainActivity;
+import com.admin.plani.remotescreen.utils.ByteSum;
 import com.admin.plani.remotescreen.utils.ByteUtils;
 import com.admin.plani.remotescreen.utils.SocketConnect;
 import com.admin.plani.remotescreen.utils.Zprint;
@@ -62,6 +64,7 @@ import static android.app.Activity.RESULT_OK;
 import static android.app.PendingIntent.FLAG_UPDATE_CURRENT;
 
 public class MyService extends Service {
+    private String TAG = "MyService";
     private MediaProjectionManager projectionManager;
     private MediaProjection projection;
     private int width;
@@ -88,7 +91,9 @@ public class MyService extends Service {
     private Socket socket;
 
     private OutputStream outputStream;
+    private BufferedOutputStream bufferedOutputStream;
     private InputStream inputStream;
+    private int anInt = 1;
     public MyService() {
     }
 
@@ -234,7 +239,7 @@ public class MyService extends Service {
             if (local && mediaMuxer == null) {
                 throw new NullPointerException("如果想录制mp4到本机，必须先调用 initMediaMuxer（）");
             }
-            File file = new File("/storage/emulated/0/Download/", "ss.apk");
+         /*   File file = new File("/storage/emulated/0/Download/", "ss.apk");
             if (!file.exists()) {
                 try {
                     file.createNewFile();
@@ -248,51 +253,52 @@ public class MyService extends Service {
                 bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
-            }
+            }*/
+            long before = System.currentTimeMillis();
+            long fps = 1000 / 60L;
+            long now;
             while (atomicBoolean.get()) {
-                int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, 10000);
-                if (outputBufferId >= 0) {
-                    Zprint.log(this.getClass(), "可以录制 ");
-                    ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(outputBufferId);
-                    // 这里 直播的话 传送 缓存数组
-                    byte[] temp = new byte[outputBuffer.limit()];
-                    outputBuffer.get(temp);
-                    try {
-                        bufferedOutputStream.write(temp);
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                now = System.currentTimeMillis();
+                if (true) {
+                    before = now;
+                    int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, -1);
+                    if (outputBufferId >= 0) {
+//                        Zprint.log(this.getClass(), "可以录制 ");
+                        ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(outputBufferId);
+                        // 这里 直播的话 传送 缓存数组
+                        byte[] temp = new byte[outputBuffer.limit()];
+                        outputBuffer.get(temp);
+                      /*  try {
+                            bufferedOutputStream.write(temp);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }*/
+
+                        sendBytes(temp);
+
+                        //录制mp4
+//                        encodeToVideoTrack(outputBuffer);
+                        //释放输出缓冲区的数据 这样才能接受新的数据
+                        mediaCodec.releaseOutputBuffer(outputBufferId, false);
+                    } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        //输出格式变化
+
+                        MediaFormat newOutFormat = mediaCodec.getOutputFormat();
+
+                        ByteBuffer sps = newOutFormat.getByteBuffer("csd-0");    // SPS
+                        ByteBuffer pps = newOutFormat.getByteBuffer("csd-1");    // PPS
+                        if (sps.hasArray()) {
+                            sendBytes(sps.array());
+                            sendBytes(pps.array());
+                        }
+                        Zprint.log(this.getClass(), " 输出格式 有变化 ");
+                        if (mediaMuxer != null) {
+                            //跟踪新的 格式的 信道
+                            mVideoTrackIndex = mediaMuxer.addTrack(newOutFormat);
+                            mediaMuxer.start();
+                        }
+                    } else if (outputBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     }
-
-                    sendBytes(temp);
-
-                    //录制mp4
-                    encodeToVideoTrack(outputBuffer);
-                    //释放输出缓冲区的数据 这样才能接受新的数据
-                    mediaCodec.releaseOutputBuffer(outputBufferId, false);
-                } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    //输出格式变化
-
-                    MediaFormat newOutFormat = mediaCodec.getOutputFormat();
-
-                    ByteBuffer sps = newOutFormat.getByteBuffer("csd-0");    // SPS
-                    ByteBuffer pps = newOutFormat.getByteBuffer("csd-1");    // PPS
-                    if (sps.hasArray()) {
-                        sendBytes(sps.array());
-                        sendBytes(pps.array());
-                    }
-                    Zprint.log(this.getClass(), " 输出格式 有变化 ");
-                    if (mediaMuxer != null) {
-                        //跟踪新的 格式的 信道
-                        mVideoTrackIndex = mediaMuxer.addTrack(newOutFormat);
-                        mediaMuxer.start();
-                    }
-                } else if (outputBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
-//                    Zprint.log(this.getClass(), " INFO_TRY_AGAIN_LATER  ");
-                /*    try {
-                        Thread.sleep(10);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }*/
                 }
             }
             try {
@@ -373,7 +379,7 @@ public class MyService extends Service {
     }
 
     private void initSocket() {
-        SocketConnect socketConnect = new SocketConnect("192.168.2.169", 9936);
+        SocketConnect socketConnect = new SocketConnect("192.168.0.108", 9937);
         Future<Socket> future = executorService.submit(socketConnect);
         try {
             Socket temp = future.get();
@@ -386,7 +392,9 @@ public class MyService extends Service {
                     socket=null;
                 }
                 socket = temp;
+                Zprint.log(this.getClass()," socket 缓冲区 ",socket.getSendBufferSize());
                 outputStream = socket.getOutputStream();
+                bufferedOutputStream = new BufferedOutputStream(outputStream);
                 inputStream = socket.getInputStream();
                 Zprint.log(this.getClass()," socket 链接成功");
                 worker.sendEmptyMessage(1);
@@ -422,8 +430,13 @@ public class MyService extends Service {
         //将发送数组 的内容 写入 新数组
         System.arraycopy(target, 0, endBytes, lenBytes.length, target.length);
         try {
-            outputStream.write(endBytes);
-            outputStream.flush();
+            bufferedOutputStream.write(endBytes);
+            bufferedOutputStream.flush();
+            Log.d(TAG, "第几次数据  " + (anInt++)+" 头部长度 "+len+"中尾一位数据 "+target[target.length/2]+target[target.length-1]+"   byte数组和 "+ByteSum.Sum(target));
+           /* Log.d(TAG, "第几次发送 " + (anInt++));
+
+            Log.d(TAG, " 头部长度 "+len+" 发送目标数组 中间一位数据 "+target[target.length/2]+target[target.length-1]);
+            Log.d(TAG, "byte数组和 "+ByteSum.Sum(target));*/
         } catch (IOException e) {
             e.printStackTrace();
         }

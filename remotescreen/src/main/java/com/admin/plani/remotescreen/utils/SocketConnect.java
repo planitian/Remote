@@ -37,6 +37,7 @@ public class SocketConnect  implements Callable<Socket> {
                 }
                 socket = new Socket();
                 socket.setKeepAlive(true);
+//                socket.setSendBufferSize();
                 SocketAddress socketAddress = new InetSocketAddress(host, port);
                 socket.connect(socketAddress, 3000);
                 Log.d(TAG, "是否连接成功" + socket.isConnected());
