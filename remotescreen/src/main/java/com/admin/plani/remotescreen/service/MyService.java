@@ -92,7 +92,7 @@ public class MyService extends Service {
     private BufferedOutputStream outputStream;
     private BufferedInputStream  inputStream;
 
-    private int anInt = 0;
+    private int anInt = 1;
 
     private static final int SPS = 0;
     private static final int PPS = 1;
@@ -258,7 +258,7 @@ public class MyService extends Service {
             }*/
 
             while (atomicBoolean.get()) {
-                int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, 0);
+                int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, -1);
                 if (outputBufferId >= 0) {
 //                    Zprint.log(this.getClass(), "可以录制 ");
                     ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(outputBufferId);
@@ -269,11 +269,11 @@ public class MyService extends Service {
                         e.printStackTrace();
                     }*/
 
-                        // 这里 直播的话 传送 缓存数组
-                       byte[] temp = new byte[outputBuffer.limit()];
-                       outputBuffer.get(temp);
+                    // 这里 直播的话 传送 缓存数组
+                    byte[] temp = new byte[outputBuffer.limit()];
+                    outputBuffer.get(temp);
 
-                    sendBytes(temp,FRA);
+                    sendBytes(temp, FRA);
 
                     //录制mp4
 //                    encodeToVideoTrack(outputBuffer);
@@ -287,15 +287,15 @@ public class MyService extends Service {
                     ByteBuffer sps = newOutFormat.getByteBuffer("csd-0");    // SPS
                     ByteBuffer pps = newOutFormat.getByteBuffer("csd-1");    // PPS
                     if (sps.hasArray()) {
-                        sendBytes(sps.array(),SPS);
-                        sendBytes(pps.array(),PPS);
+                        sendBytes(sps.array(), SPS);
+                        sendBytes(pps.array(), PPS);
                     }
                     Zprint.log(this.getClass(), " 输出格式 有变化 ");
-                    if (mediaMuxer != null) {
+                 /*   if (mediaMuxer != null) {
                         //跟踪新的 格式的 信道
                         mVideoTrackIndex = mediaMuxer.addTrack(newOutFormat);
                         mediaMuxer.start();
-                    }
+                    }*/
                 } else if (outputBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
 //                    Zprint.log(this.getClass(), " INFO_TRY_AGAIN_LATER  ");
                 /*    try {
@@ -325,11 +325,11 @@ public class MyService extends Service {
                 virtualDisplay = null;
             }
 
-            if (mediaMuxer != null) {
+          /*  if (mediaMuxer != null) {
                 mediaMuxer.stop();
                 mediaMuxer.release();
                 mediaMuxer = null;
-            }
+            }*/
         }
 
 
@@ -420,30 +420,30 @@ public class MyService extends Service {
 
     /**
      * @param target 要发送的数组
-     * @param type  数组内容的类型 是SPS 还是PPS  FRA
+     * @param type   数组内容的类型 是SPS 还是PPS  FRA
      */
-    public void sendBytes(byte[] target,int type) {
+    public void sendBytes(byte[] target, int type) {
         if (socket == null || socket.isClosed() || outputStream == null) {
             return;
         }
         //发送数组的长度  本身长度 加标识长度 1字节
-        int len = target.length+1;
+        int len = target.length + 1;
         //长度写入一个4字节的数组中
         byte[] lenBytes = ByteUtils.IntToByteArray(len);
-     /*   for (int i = 0; i <lenBytes.length ; i++) {
+        for (int i = 0; i <lenBytes.length ; i++) {
             System.out.println(lenBytes[i]);
-        }*/
+        }
         //将4 字节的数组进行 扩容  加上发送数组的长度和 标识长度
         byte[] endBytes = Arrays.copyOf(lenBytes, len + lenBytes.length);
 
         endBytes[4] = (byte) type;
         //将发送数组 的内容 写入 新数组
-        System.arraycopy(target, 0, endBytes, lenBytes.length+1,len-1);
+        System.arraycopy(target, 0, endBytes, lenBytes.length + 1, len - 1);
         try {
-            System.out.println(" 图像数组读取 "+len+"   "+" 数组类型 "+type+"  发送数组 最后一位数据 "+endBytes[endBytes.length-1]);
+            System.out.println(" 图像数组读取 " + len + "   " + " 数组类型 " + type + "  发送数组 最后一位数据 " + endBytes[endBytes.length - 1]);
             outputStream.write(endBytes);
             outputStream.flush();
-            Log.d(" 第几次数据", anInt+++"");
+            Log.d(" 第几次数据", anInt++ + "");
         } catch (IOException e) {
             e.printStackTrace();
             closeSocket();
