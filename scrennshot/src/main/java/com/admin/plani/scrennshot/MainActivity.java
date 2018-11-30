@@ -23,6 +23,7 @@ import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Environment;
 import android.os.SystemClock;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
@@ -170,7 +171,6 @@ public class MainActivity extends AppCompatActivity {
                       }
                   });
               }
-
             }
 
             @Override
@@ -198,15 +198,15 @@ public class MainActivity extends AppCompatActivity {
                     Zprint.log(this.getClass(), "录屏文件的位置", file.getAbsolutePath());
 
                     projection.createVirtualDisplay("image", width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surfaceView.getHolder().getSurface(), null, null);
-
-                  /*  MediaRecordThread mediaRecordThread = new MediaRecordThread(width, height, 6000000,
+/*
+                    MediaRecordThread mediaRecordThread = new MediaRecordThread(width, height, 6000000,
                             dpi, projection, file.getAbsolutePath());
                     mediaRecordThread.start();*/
 
-                    /*ScreenRecorder screenRecorder = new ScreenRecorder(projection);
+                    ScreenRecorder screenRecorder = new ScreenRecorder(projection);
                     new Thread(screenRecorder).start();
                     this.runOnUiThread(() -> Toast.makeText(MainActivity.this, "开始录屏", Toast.LENGTH_LONG).show());
-                    break;*/
+                    break;
 
 
                     //>>>>>>>>>>>>>>>>>>>
@@ -411,14 +411,33 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void run() {
             try {
-                prepereEncoder();
+
                 String path = Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + "first.mp4";
                 File out = new File(path);
                 mediaMuxer = new MediaMuxer(out.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+                prepereEncoder();
                 virtualDisplay = mediaProjection.createVirtualDisplay("luping", width, height,
                         dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, mSurface, null, null);
                 Zprint.log(this.getClass(), "created virtual display:");
-                recordVirtualDisplay();
+//                recordVirtualDisplay();
+
+                long befor = System.currentTimeMillis();
+                while (true){
+                    if ((System.currentTimeMillis()-befor)>(3*1000)){
+                        Zprint.log(this.getClass()," 跳出循环？》》》》》》》》》》》》》》");
+                        break;
+                    }
+                }
+                mediaCodec.signalEndOfInputStream();
+                mediaCodec.stop();
+                mediaCodec.release();
+                mediaCodec = null;
+
+                release();
+
+                mediaMuxer.stop();
+                mediaMuxer.release();
+                mediaMuxer = null;
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -433,7 +452,35 @@ public class MainActivity extends AppCompatActivity {
             format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
 
             mediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+
+            mediaCodec.setCallback(new MediaCodec.Callback() {
+                @Override
+                public void onInputBufferAvailable(@NonNull MediaCodec codec, int index) {
+                    Zprint.log(this.getClass(),"运行");
+                }
+
+                @Override
+                public void onOutputBufferAvailable(@NonNull MediaCodec codec, int index, @NonNull MediaCodec.BufferInfo info) {
+                        encodeToVideoTrack(index,codec);
+                        codec.releaseOutputBuffer(index, false);
+                        Zprint.log(this.getClass(),"运行");
+                }
+
+                @Override
+                public void onError(@NonNull MediaCodec codec, @NonNull MediaCodec.CodecException e) {
+                    System.out.println("异常   "+e.toString());
+                }
+
+                @Override
+                public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {
+                    Zprint.log(this.getClass(),"运行");
+//                    MediaFormat newOutFormat = codec.getOutputFormat();
+                    mVideoTrackIndex = mediaMuxer.addTrack(format);
+                    mediaMuxer.start();
+                }
+            });
             mediaCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+
             mSurface = mediaCodec.createInputSurface();//需要在createEncoderByType之后和start()之前才能创建，源码注释写的很清楚
             mediaCodec.start();
         }
@@ -464,11 +511,7 @@ public class MainActivity extends AppCompatActivity {
                     mVideoTrackIndex = mediaMuxer.addTrack(newOutFormat);
                     mediaMuxer.start();
                 } else if (outputBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    try {
-                        Thread.sleep(10);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
+
                 }
             }
             mediaCodec.signalEndOfInputStream();
@@ -494,6 +537,24 @@ public class MainActivity extends AppCompatActivity {
             if (bufferInfo.size == 0) {
                 encodedData = null;
             } else {
+            }
+            if (encodedData != null) {
+                encodedData.position(bufferInfo.offset);
+                encodedData.limit(bufferInfo.offset + bufferInfo.size);
+                mediaMuxer.writeSampleData(mVideoTrackIndex, encodedData, bufferInfo);//写入
+            }
+        }
+
+        private void encodeToVideoTrack(int index,MediaCodec mediaCodec) {
+            ByteBuffer encodedData = mediaCodec.getOutputBuffer(index);
+            if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {//是编码需要的特定数据，不是媒体数据
+                // The codec config data was pulled out and fed to the muxer when we got
+                // the INFO_OUTPUT_FORMAT_CHANGED status.
+                // Ignore it.
+                bufferInfo.size = 0;
+            }
+            if (bufferInfo.size == 0) {
+                encodedData = null;
             }
             if (encodedData != null) {
                 encodedData.position(bufferInfo.offset);
