@@ -138,7 +138,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 //        initSocket();
-        new Thread(() -> initNvSocket()).start();
         Zprint.log(this.getClass(), "当前屏幕方向", getDgree());
 
         surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
@@ -418,12 +417,14 @@ public class MainActivity extends AppCompatActivity {
                 prepereEncoder();
                 virtualDisplay = mediaProjection.createVirtualDisplay("luping", width, height,
                         dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, mSurface, null, null);
+                Zprint.log(this.getClass(),"Surface是否存在 ",mSurface==null);
+                virtualDisplay.setSurface(mSurface);
                 Zprint.log(this.getClass(), "created virtual display:");
 //                recordVirtualDisplay();
 
                 long befor = System.currentTimeMillis();
                 while (true){
-                    if ((System.currentTimeMillis()-befor)>(3*1000)){
+                    if ((System.currentTimeMillis()-befor)>(10*1000)){
                         Zprint.log(this.getClass()," 跳出循环？》》》》》》》》》》》》》》");
                         break;
                     }
@@ -456,14 +457,17 @@ public class MainActivity extends AppCompatActivity {
             mediaCodec.setCallback(new MediaCodec.Callback() {
                 @Override
                 public void onInputBufferAvailable(@NonNull MediaCodec codec, int index) {
-                    Zprint.log(this.getClass(),"运行");
+                    Zprint.log(this.getClass(),"输入  运行",codec,index);
+
                 }
 
                 @Override
                 public void onOutputBufferAvailable(@NonNull MediaCodec codec, int index, @NonNull MediaCodec.BufferInfo info) {
+
+                        Zprint.log(this.getClass(),"运行",codec,index,info.size,info.offset);
+                         bufferInfo = info;
                         encodeToVideoTrack(index,codec);
                         codec.releaseOutputBuffer(index, false);
-                        Zprint.log(this.getClass(),"运行");
                 }
 
                 @Override
@@ -473,14 +477,13 @@ public class MainActivity extends AppCompatActivity {
 
                 @Override
                 public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {
-                    Zprint.log(this.getClass(),"运行");
+                    Zprint.log(this.getClass(),"运行",codec,format);
 //                    MediaFormat newOutFormat = codec.getOutputFormat();
                     mVideoTrackIndex = mediaMuxer.addTrack(format);
                     mediaMuxer.start();
                 }
             });
             mediaCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-
             mSurface = mediaCodec.createInputSurface();//需要在createEncoderByType之后和start()之前才能创建，源码注释写的很清楚
             mediaCodec.start();
         }
@@ -536,7 +539,6 @@ public class MainActivity extends AppCompatActivity {
             }
             if (bufferInfo.size == 0) {
                 encodedData = null;
-            } else {
             }
             if (encodedData != null) {
                 encodedData.position(bufferInfo.offset);
@@ -547,6 +549,7 @@ public class MainActivity extends AppCompatActivity {
 
         private void encodeToVideoTrack(int index,MediaCodec mediaCodec) {
             ByteBuffer encodedData = mediaCodec.getOutputBuffer(index);
+            Zprint.log(this.getClass(),"encodedData  ",encodedData.position(),encodedData.limit());
             if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {//是编码需要的特定数据，不是媒体数据
                 // The codec config data was pulled out and fed to the muxer when we got
                 // the INFO_OUTPUT_FORMAT_CHANGED status.
@@ -639,73 +642,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void initNvSocket() {
-        try {
-            webSocket = new WebSocketFactory().createSocket("ws://192.168.2.144:8025/remote/control", 1000)
-                    .setFrameQueueSize(9)
-                    .setMissingCloseFrameAllowed(false)
-                    .addListener(new WsListener())
-                    .connect();
-        } catch (IOException | WebSocketException e) {
-            e.printStackTrace();
-        }
-    }
-
-    class WsListener extends WebSocketAdapter {
-        @Override
-        public void onTextMessage(WebSocket websocket, String text) throws Exception {
-            super.onTextMessage(websocket, text);
-            Zprint.log(this.getClass(), "webSocket得到消息",text);
-
-        }
-
-        @Override
-        public void onConnected(WebSocket websocket, Map<String, List<String>> headers) throws Exception {
-            super.onConnected(websocket, headers);
-            Zprint.log(this.getClass(), "webSocket已经连接");
-
-            sendHeart(webSocket);
-
-        }
-
-        @Override
-        public void onConnectError(WebSocket websocket, WebSocketException exception) throws Exception {
-            super.onConnectError(websocket, exception);
-            Zprint.log(this.getClass(), "webSocket出现错误", exception);
-        }
-
-        @Override
-        public void onDisconnected(WebSocket websocket, WebSocketFrame serverCloseFrame, WebSocketFrame clientCloseFrame, boolean closedByServer) throws Exception {
-            super.onDisconnected(websocket, serverCloseFrame, clientCloseFrame, closedByServer);
-        }
-    }
-
-    private void sendHeart(WebSocket webSocket){
-
-
-        String sn = SNandCodeUtil.getAndroidOsSystemProperties(SNandCodeUtil.SN);
-        if (sn==null||sn.isEmpty()){
-            sn = SNandCodeUtil.SERIALNUMBER;
-        }
-        Zprint.log(this.getClass(),"sn",sn);
-        JSONObject heart = new JSONObject();
-        try {
-            heart.put("code", "1000");
-            heart.put("eq_sn", sn);
-
-            TimerTask task = new TimerTask() {
-                @Override
-                public void run() {
-                    webSocket.sendText(heart.toString());
-                    Zprint.log(this.getClass(),"发送心跳");
-                }
-            };
-            Timer timer = new Timer();
-            timer.scheduleAtFixedRate(task, 1, 5000);
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
-    }
 
     //是否拥有权限
     public boolean isPermission() {
