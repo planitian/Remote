@@ -28,11 +28,6 @@ public class FileUtils {
         }else {
             filePath = MyApplication.getApplication().getCacheDir().getAbsolutePath()+"/"+fileName;
         }
-
-
-
-
-
        return filePath;
     };
 

@@ -98,6 +98,7 @@ public class MyService extends Service {
     private static final int PPS = 1;
     private static final int FRA = 2;
 
+    private int count = 0;
     public MyService() {
     }
 
@@ -382,7 +383,7 @@ public class MyService extends Service {
     }
 
     private void initSocket() {
-        SocketConnect socketConnect = new SocketConnect("192.168.0.108", 5553);
+        SocketConnect socketConnect = new SocketConnect("192.168.0.107", 9937);
         Future<Socket> future = executorService.submit(socketConnect);
         try {
             Socket temp = future.get();
@@ -426,13 +427,16 @@ public class MyService extends Service {
         if (socket == null || socket.isClosed() || outputStream == null) {
             return;
         }
+        if (count>100&&count<200){
+            System.out.println(">>>>>>>>>>>>>>");
+            return;
+        }
+        count++;
         //发送数组的长度  本身长度 加标识长度 1字节
         int len = target.length + 1;
         //长度写入一个4字节的数组中
         byte[] lenBytes = ByteUtils.IntToByteArray(len);
-        for (int i = 0; i <lenBytes.length ; i++) {
-            System.out.println(lenBytes[i]);
-        }
+
         //将4 字节的数组进行 扩容  加上发送数组的长度和 标识长度
         byte[] endBytes = Arrays.copyOf(lenBytes, len + lenBytes.length);
 
