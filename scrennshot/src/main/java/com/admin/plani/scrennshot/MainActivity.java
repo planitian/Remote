@@ -196,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
                     File file = new File(path);
                     Zprint.log(this.getClass(), "录屏文件的位置", file.getAbsolutePath());
 
-                    projection.createVirtualDisplay("image", width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surfaceView.getHolder().getSurface(), null, null);
+//                    projection.createVirtualDisplay("image", width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surfaceView.getHolder().getSurface(), null, null);
 /*
                     MediaRecordThread mediaRecordThread = new MediaRecordThread(width, height, 6000000,
                             dpi, projection, file.getAbsolutePath());
@@ -315,7 +315,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
+      //使用 MediaRecord 进行录制
     class MediaRecordThread extends Thread {
         private int mWidth;
         private int mHeight;
@@ -349,12 +349,11 @@ public class MainActivity extends AppCompatActivity {
             } catch (IllegalStateException e) {
                 e.printStackTrace();
             } finally {
-//                release();
+                release();
             }
         }
 
         void initMediaRecordor() {
-
             mediaRecorder = new MediaRecorder();
             mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
             mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
@@ -391,6 +390,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    /**
+     *
+     */
     public class ScreenRecorder implements Runnable {
         private MediaProjection mediaProjection;
         private MediaCodec mediaCodec;
@@ -404,7 +406,6 @@ public class MainActivity extends AppCompatActivity {
         public ScreenRecorder(MediaProjection mediaProjection) {
             this.mediaProjection = mediaProjection;
             this.bufferInfo = new MediaCodec.BufferInfo();
-
         }
 
         @Override
@@ -488,6 +489,9 @@ public class MainActivity extends AppCompatActivity {
             mediaCodec.start();
         }
 
+        /**
+         * 同步录制
+         */
         private void recordVirtualDisplay() {
             while (atomicBoolean.get()) {
                 int outputBufferId = mediaCodec.dequeueOutputBuffer(bufferInfo, 10000);
@@ -529,6 +533,7 @@ public class MainActivity extends AppCompatActivity {
             mediaMuxer = null;
         }
 
+        //同步录制 写入
         private void encodeToVideoTrack(int index) {
             ByteBuffer encodedData = mediaCodec.getOutputBuffer(index);
             if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {//是编码需要的特定数据，不是媒体数据
@@ -547,6 +552,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        //异步的
         private void encodeToVideoTrack(int index,MediaCodec mediaCodec) {
             ByteBuffer encodedData = mediaCodec.getOutputBuffer(index);
             Zprint.log(this.getClass(),"encodedData  ",encodedData.position(),encodedData.limit());
@@ -614,6 +620,7 @@ public class MainActivity extends AppCompatActivity {
         return degrees;
     }
 
+    //链接socket
     public void initSocket() {
         SocketConnect socketConnect = new SocketConnect("192.168.1.149", 8080);
         FutureTask<Socket> futureTask = new FutureTask<Socket>(socketConnect);
@@ -629,6 +636,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    /**
+     * @param data 发送数据
+     */
     public void sendData(byte[] data) {
         OutputStream outputStream = null;
         Zprint.log(this.getClass(), "发送的数据", data.toString());

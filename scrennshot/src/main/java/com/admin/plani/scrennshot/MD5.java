@@ -3,7 +3,7 @@ package com.admin.plani.scrennshot;
 import java.security.MessageDigest;
 
 public class MD5 {
-	
+
 	/**
 	 * 加密算法MD5
 	 * @param text 明文
