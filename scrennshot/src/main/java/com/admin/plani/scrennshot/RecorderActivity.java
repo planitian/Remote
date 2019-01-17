@@ -30,6 +30,7 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -50,6 +51,7 @@ public class RecorderActivity extends AppCompatActivity {
 
     private MediaRecorder mediaRecorder;
     private MediaRecordThread mediaRecordThread;
+    private ScreenAsyn screenAsyn;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,8 +88,7 @@ public class RecorderActivity extends AppCompatActivity {
                 mediaRecorder = null;
             }*/
 
-            mediaRecordThread.release();
-            mediaRecordThread = null;
+            screenAsyn.stopRecord();
         });
     }
 
@@ -108,7 +109,9 @@ public class RecorderActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUSET_VIDEO && resultCode == RESULT_OK) {//已经成功获取到权限
             MediaProjection projection = projectionManager.getMediaProjection(resultCode, data);
-            startRecorderWithMediaRecorder(projection);
+            String filePath = filePath("noSound.mp4");
+            screenAsyn = new ScreenAsyn(width, height, 6000000, dpi, projection, filePath);
+            new Thread(screenAsyn).start();
         }
     }
 
@@ -222,9 +225,10 @@ public class RecorderActivity extends AppCompatActivity {
      *
      * @param isAsyn 是否异步录制，true 异步，false 同步
      */
-    void startRecorderWithMediaCodec(boolean isAsyn) {
+    void startRecorderWithMediaCodec(boolean isAsyn, MediaProjection mediaProjection) {
 
     }
+
     //录制屏幕 加声音 同步方式
     class AudioRecorderThread extends Thread {
         private AudioRecord mAudiorecord;//录音类
@@ -254,7 +258,7 @@ public class RecorderActivity extends AppCompatActivity {
         private MediaCodec mVideoMediaCodec;//视频编码器
 
         private MediaFormat audioFormat;//音频编码器 输出数据的格式
-        private MediaFormat viedeoFormat;//视频编码器 输出数据的格式
+        private MediaFormat videoFormat;//视频编码器 输出数据的格式
 
         private MediaProjection mediaProjection;//通过这个类 生成虚拟屏幕
         private Surface surface;//视频编码器 生成的surface ，用于充当 视频编码器的输入源
@@ -263,7 +267,7 @@ public class RecorderActivity extends AppCompatActivity {
         private MediaCodec.BufferInfo audioInfo = new MediaCodec.BufferInfo();
         private MediaCodec.BufferInfo videoInfo = new MediaCodec.BufferInfo();
 
-        private volatile   boolean isRun = true;//用于控制 是否录制，这个无关紧要
+        private volatile boolean isRun = true;//用于控制 是否录制，这个无关紧要
 
 
         private int mWidth;//录制视频的宽
@@ -319,8 +323,8 @@ public class RecorderActivity extends AppCompatActivity {
                         mVideoMediaCodec.releaseOutputBuffer(videoOutputID, false);
                     } else if (videoOutputID == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {//输出格式有变化
                         Zprint.log(this.getClass(), "video Format 改变");
-                        viedeoFormat = mVideoMediaCodec.getOutputFormat();//得到新的输出格式
-                        videoIndex = mMediaMuxer.addTrack(viedeoFormat);//重新确定信道
+                        videoFormat = mVideoMediaCodec.getOutputFormat();//得到新的输出格式
+                        videoIndex = mMediaMuxer.addTrack(videoFormat);//重新确定信道
                     }
                     //得到 输入缓冲区的索引
                     int audioInputID = mAudioMediaCodec.dequeueInputBuffer(0);
@@ -338,7 +342,7 @@ public class RecorderActivity extends AppCompatActivity {
                         audioInputBuffer.put(byteBuffer, 0, read);
                         //入列  注意下面的时间，这个是确定这段数据 时间的 ，视频音频 都是一段段的数据，每个数据都有时间 ，这样播放器才知道 先播放那个数据
                         // 串联起来 就是连续的了
-                        mAudioMediaCodec.queueInputBuffer(audioInputID, 0, read, System.nanoTime()/1000L, 0);
+                        mAudioMediaCodec.queueInputBuffer(audioInputID, 0, read, System.nanoTime() / 1000L, 0);
                     }
                     //音频输出
                     int audioOutputID = mAudioMediaCodec.dequeueOutputBuffer(audioInfo, 0);
@@ -386,15 +390,15 @@ public class RecorderActivity extends AppCompatActivity {
         //实例化 VIDEO 的编码器
         void initVideoMedicodec() throws IOException {
             //这里的width height 就是录制视频的分辨率，可以更改  如果这里的分辨率小于 虚拟屏幕的分辨率 ，你会发现 视频只录制了 屏幕部分内容
-            viedeoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, mWidth, mHeight);
-            viedeoFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-            viedeoFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitRate);//比特率 bit单位
-            viedeoFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 60);//FPS
-            viedeoFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);//关键帧  是完整的一张图片，其他的都是部分图片
+            videoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, mWidth, mHeight);
+            videoFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+            videoFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitRate);//比特率 bit单位
+            videoFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 60);//FPS
+            videoFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);//关键帧  是完整的一张图片，其他的都是部分图片
             //通过类型创建编码器  同理 创建解码器也是一样
             mVideoMediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
             //配置
-            mVideoMediaCodec.configure(viedeoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            mVideoMediaCodec.configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
             //让视频编码器 生成一个弱引用的surface， 这个surface不会保证视频编码器 不被回收，这样 编码视频的时候 就不需要 传输数据进去了
             surface = mVideoMediaCodec.createInputSurface();
             //创建虚拟屏幕，让虚拟屏幕内容 渲染在上面的surface上面 ，这样 才能 不用传输数据进去
@@ -430,19 +434,23 @@ public class RecorderActivity extends AppCompatActivity {
             mMediaMuxer = new MediaMuxer(filePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         }
 
+        //释放资源
         void stopRecorder() {
-            mVideoMediaCodec.stop();
-            mVideoMediaCodec.release();
-            mVideoMediaCodec = null;
-
-            mAudioMediaCodec.stop();
-            mAudioMediaCodec.release();
-            mAudioMediaCodec = null;
-
-
-            mAudiorecord.stop();
-            mAudiorecord.release();
-            mAudiorecord = null;
+            if (mVideoMediaCodec != null) {
+                mVideoMediaCodec.stop();
+                mVideoMediaCodec.release();
+                mVideoMediaCodec = null;
+            }
+            if (mAudioMediaCodec != null) {
+                mAudioMediaCodec.stop();
+                mAudioMediaCodec.release();
+                mAudioMediaCodec = null;
+            }
+            if (mAudiorecord != null) {
+                mAudiorecord.stop();
+                mAudiorecord.release();
+                mAudiorecord = null;
+            }
 
             mMediaMuxer.stop();
             mMediaMuxer.release();
@@ -450,6 +458,104 @@ public class RecorderActivity extends AppCompatActivity {
 
             virtualDisplay.release();
             virtualDisplay = null;
+        }
+    }
+
+
+    //录屏 异步模式  没有声音的
+    class ScreenAsyn implements Runnable {
+        private MediaProjection mediaProjection;
+        private MediaFormat videoFormat;
+        private MediaCodec mVideoMediaCodec;
+        private VirtualDisplay virtualDisplay;
+        private MediaMuxer mediaMuxer;
+        private int videoIndex;
+
+        private int mWidth;//录制视频的宽
+        private int mHeight;//录制视频的高
+        private int mBitRate;//比特率 bits per second  这个经过我测试 并不是 一定能达到这个值
+        private int mDpi;//视频的DPI
+        private String mDstPath;//录制视频文件存放地点
+        private final int FRAME_RATE = 60;//视频帧数 一秒多少张画面 并不一定能达到这个值
+
+        public ScreenAsyn(int width, int height, int bitrate, int dpi, MediaProjection mediaProjection, String dstPath) {
+            this.mWidth = width;
+            mHeight = height;
+            mBitRate = bitrate;
+            mDpi = dpi;
+            this.mediaProjection = mediaProjection;
+            mDstPath = dstPath;
+        }
+
+        @Override
+        public void run() {
+            try {
+                mediaMuxer = new MediaMuxer(mDstPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+
+                Surface surface;
+                //这里的width height 就是录制视频的分辨率，可以更改  如果这里的分辨率小于 虚拟屏幕的分辨率 ，你会发现 视频只录制了 屏幕部分内容
+                videoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, mWidth, mHeight);
+                videoFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+                videoFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitRate);//比特率 bit单位
+                videoFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 60);//FPS
+                videoFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);//关键帧  是完整的一张图片，其他的都是部分图片
+                //通过类型创建编码器  同理 创建解码器也是一样
+                mVideoMediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+                mVideoMediaCodec.setCallback(new MediaCodec.Callback() {
+                    @Override
+                    public void onInputBufferAvailable(@NonNull MediaCodec codec, int index) {
+
+                    }
+
+                    @Override
+                    public void onOutputBufferAvailable(@NonNull MediaCodec codec, int index, @NonNull MediaCodec.BufferInfo info) {
+                        Zprint.log(this.getClass(), "info", info.offset, info.size, info.presentationTimeUs);
+                        ByteBuffer outBuffer = codec.getOutputBuffer(index);
+                        outBuffer.flip();
+                        mediaMuxer.writeSampleData(videoIndex, outBuffer, info);
+                        codec.releaseOutputBuffer(index, false);
+                    }
+
+                    @Override
+                    public void onError(@NonNull MediaCodec codec, @NonNull MediaCodec.CodecException e) {
+
+                    }
+
+                    @Override
+                    public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {
+                        //这是h.264需要的
+                        ByteBuffer sps = format.getByteBuffer("csd-0");    // SPS
+                        ByteBuffer pps = format.getByteBuffer("csd-1");    // PPS
+                        //VP9 需要的
+                        ByteBuffer CodecPrivate = format.getByteBuffer("csd-0"); //
+                        videoIndex = mediaMuxer.addTrack(format);
+                        mediaMuxer.start();
+                    }
+                });
+
+                mVideoMediaCodec.configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+                surface = mVideoMediaCodec.createInputSurface();
+                virtualDisplay = mediaProjection.createVirtualDisplay("asyn", mWidth, mHeight, mDpi, mBitRate, surface, null, null);
+                mVideoMediaCodec.start();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        //暂停录制
+        void stopRecord() {
+            if (mVideoMediaCodec != null) {
+                mVideoMediaCodec.stop();
+                mVideoMediaCodec.release();
+                mVideoMediaCodec = null;
+            }
+            if (mediaMuxer != null) {
+                mediaMuxer.release();
+                mediaMuxer = null;
+            }
+            if (virtualDisplay != null) {
+                virtualDisplay.release();
+            }
         }
     }
 

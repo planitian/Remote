@@ -201,15 +201,15 @@ public class MainActivity extends AppCompatActivity {
                     MediaRecordThread mediaRecordThread = new MediaRecordThread(width, height, 6000000,
                             dpi, projection, file.getAbsolutePath());
                     mediaRecordThread.start();*/
-
+/*
                     ScreenRecorder screenRecorder = new ScreenRecorder(projection);
                     new Thread(screenRecorder).start();
                     this.runOnUiThread(() -> Toast.makeText(MainActivity.this, "开始录屏", Toast.LENGTH_LONG).show());
-                    break;
+                    break;*/
 
 
                     //>>>>>>>>>>>>>>>>>>>
-           /*         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 15);
+                    imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 15);
                     projection.createVirtualDisplay("shot", width, height, dpi,  DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader.getSurface(), null, null);
                     SystemClock.sleep(1000);
                     Timer timer = new Timer();
@@ -237,7 +237,7 @@ public class MainActivity extends AppCompatActivity {
                                 }
                             });
                         }
-                    },1000,1000);*/
+                    },1000,1000);
             /*        try {
                         prepereEncoder();
                         projection.createVirtualDisplay("image", width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surfaceView.getHolder().getSurface(), null, null);
@@ -451,7 +451,6 @@ public class MainActivity extends AppCompatActivity {
             format.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
             format.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
             format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
-            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
 
             mediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
 

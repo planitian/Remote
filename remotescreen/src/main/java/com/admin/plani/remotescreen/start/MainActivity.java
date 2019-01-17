@@ -39,7 +39,6 @@ public class MainActivity extends AppCompatActivity {
             ActivityUtils.addFragmentToActivity(getSupportFragmentManager(),startFragment,R.id.start_content);
         }
         new StartPresenter().setView(startFragment);
-
     }
 
 
