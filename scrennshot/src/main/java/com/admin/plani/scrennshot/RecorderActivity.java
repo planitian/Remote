@@ -2,11 +2,15 @@ package com.admin.plani.scrennshot;
 
 import android.Manifest;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
+import android.media.Image;
+import android.media.ImageReader;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -535,7 +539,7 @@ public class RecorderActivity extends AppCompatActivity {
 
                 mVideoMediaCodec.configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
                 surface = mVideoMediaCodec.createInputSurface();
-                virtualDisplay = mediaProjection.createVirtualDisplay("asyn", mWidth, mHeight, mDpi, mBitRate, surface, null, null);
+                virtualDisplay = mediaProjection.createVirtualDisplay("asyn", mWidth, mHeight, mDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, surface, null, null);
                 mVideoMediaCodec.start();
             } catch (IOException e) {
                 e.printStackTrace();
@@ -559,6 +563,48 @@ public class RecorderActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 截图
+     * @param mediaProjection
+     * @return bitmap
+     */
+    public Bitmap screenShot(MediaProjection mediaProjection){
+        Objects.requireNonNull(mediaProjection);
+        ImageReader imageReader = ImageReader.newInstance(1080, 1920, PixelFormat.RGBA_8888, 60);
+        VirtualDisplay virtualDisplay = mediaProjection.createVirtualDisplay("screen", width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,imageReader.getSurface(), null, null);
+        //这个是取 现在最新的图片
+        Image image = imageReader.acquireLatestImage();
+        //也可以挨个取图片
+//        Image image = imageReader.acquireNextImage();
+        return image2Bitmap(image);
+    }
+
+    public static Bitmap image2Bitmap(Image image) {
+        if (image == null) {
+            System.out.println("image 为空");
+            return null;
+        }
+        int width = image.getWidth();
+        int height = image.getHeight();
+        System.out.println(width+"    "+height);
+        final Image.Plane[] planes = image.getPlanes();
+        final ByteBuffer buffer = planes[0].getBuffer();
+        int pixelStride = planes[0].getPixelStride();
+        int rowStride = planes[0].getRowStride();
+        int rowPadding = rowStride - pixelStride * width;
+
+        Bitmap bitmap = Bitmap.createBitmap(width+ rowPadding / pixelStride , height, Bitmap.Config.ARGB_8888);
+        bitmap.copyPixelsFromBuffer(buffer);
+
+    /*    //压缩图片
+        Matrix matrix = new Matrix();
+        matrix.setScale(0.5F, 0.5F);
+        System.out.println(bitmap.isMutable());
+        bitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, false);
+*/
+        image.close();
+        return bitmap;
+    }
     /**
      * @param fileName 文件名字
      * @return 文件的地址，默认在recorder文件夹下
