@@ -71,7 +71,7 @@ public class RecorderActivity extends AppCompatActivity {
         DisplayMetrics metrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
         dpi = metrics.densityDpi;
-
+        //检查 读写 和录音权限
         requestPermission();
 
         start = findViewById(R.id.button);
@@ -134,7 +134,7 @@ public class RecorderActivity extends AppCompatActivity {
         mMediaRecordThread.start();
     }
 
-    //录制视频 放在子线程最好，所以卸载
+    //录制视频 放在子线程最好，所以线程
     class MediaRecordThread extends Thread {
         private int mWidth;//录制视频的宽
         private int mHeight;//录制视频的高
@@ -318,6 +318,7 @@ public class RecorderActivity extends AppCompatActivity {
                         //flags是2的时候 代表输出的数据 是配置信息，不是媒体信息
                         if (videoInfo.flags != 2) {
                             //得到缓冲区
+                            //这里就可以取出数据 进行网络传输
                             ByteBuffer outBuffer = mVideoMediaCodec.getOutputBuffer(videoOutputID);
                             outBuffer.flip();//准备读取
                             //写入文件中  注意 videoIndex
@@ -355,6 +356,7 @@ public class RecorderActivity extends AppCompatActivity {
                         Zprint.log(this.getClass(), "audio 输出", audioOutputID, audioInfo.presentationTimeUs);
                         audioInfo.presentationTimeUs = videoInfo.presentationTimeUs;//保持 视频和音频的统一，防止 时间画面声音 不同步
                         if (audioInfo.flags != 2) {
+                            //这里就可以取出数据 进行网络传输
                             ByteBuffer audioOutBuffer = mAudioMediaCodec.getOutputBuffer(audioOutputID);
                             audioOutBuffer.limit(audioInfo.offset + audioInfo.size);//这是另一种 和上面的 flip 没区别
                             audioOutBuffer.position(audioInfo.offset);
@@ -626,7 +628,7 @@ public class RecorderActivity extends AppCompatActivity {
     }
 
     /**
-     * 请求录音权限
+     * 请求录音读写权限
      */
     void requestPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PERMISSION_DENIED) {
